@@ -1,0 +1,6 @@
+docs/
+__pycache__
+cookies.txt
+.DS_Store
+.idea/
+.venv/
