@@ -6,6 +6,6 @@ class ExamPolicy(object):
 
     def evaluate(self, inputs: dict):
         return {
-            '核对数量', '核对新旧', '核对唛头',
-            'B',
+            'ExamModeCodes':{'核对数量', '核对新旧', '核对唛头'},
+            'LocalModeCodes':{'B'}
         }

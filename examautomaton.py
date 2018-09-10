@@ -11,7 +11,7 @@ import selenium.common.exceptions
 import selenium.webdriver.chrome.options
 
 import dummyexampolicy
-
+import exampolicy
 
 class RiskExamAutomaton(object):
     """Perform automatic operations on RiskExam website according to predefined policies"""
@@ -27,7 +27,7 @@ class RiskExamAutomaton(object):
             options.add_argument("--disable-gpu")
         self.is_headless = headless
         self.driver = webdriver.Remote("http://10.3.1.181:9515", desired_capabilities=options.to_capabilities())
-        self.policy = dummyexampolicy.ExamPolicy()
+        self.policy = exampolicy.ExamPolicy()
 
     def __del__(self):
         #self.driver.quit()
@@ -58,21 +58,29 @@ class RiskExamAutomaton(object):
         else:
             return False
 
-    def apply_exam_policy(self):
-        self.logger.debug("Applying exam policies.")
-        self.driver.switch_to.window(self.driver.window_handles[-1])
-
+    def accept_alert(self):
         try:
-            WebDriverWait(self.driver, 5).until(EC.alert_is_present())
+            self.logger.debug("Detecting alert.")
+            WebDriverWait(self.driver, 3).until(EC.alert_is_present())
             self.driver.switch_to.alert.accept()
         except selenium.common.exceptions.UnexpectedAlertPresentException:
             alert = self.driver.switch_to.alert
             self.logger.debug("Alert present: {0}".format(alert.text))
             alert.accept()
         except selenium.common.exceptions.TimeoutException:
-            self.logger.debug("No alert")
+            self.logger.debug("No alert is present.")
+
+    def apply_exam_policy(self):
+        self.logger.debug("Applying exam policies.")
+        self.driver.switch_to.window(self.driver.window_handles[-1])
+
+        self.accept_alert()
 
         WebDriverWait(self.driver, 10).until(EC.invisibility_of_element_located((By.ID, 'IDP_plugin_iform_overlaydiv')))
+
+        #开始细化
+        self.driver.find_element_by_xpath('//*[@id="btnstartCommand"]').click()
+        self.accept_alert()
 
         info = self.extract_info()
         self.logger.debug(info)
@@ -80,12 +88,14 @@ class RiskExamAutomaton(object):
         self.logger.debug(outputs)
         self.fill_form(outputs, info)
 
+        # 下达查验指令
+        self.driver.find_element_by_xpath('//*[@id="btnSubmit"]').click()
+
     def extract_info(self):
         info = {
             '布控理由':self.driver.find_element_by_xpath('//*[@id="iform3"]/table/tbody/tr[4]/td[2]/span').text,
             '布控要求': self.driver.find_element_by_xpath('//*[@id="iform3"]/table/tbody/tr[5]/td[2]/span').text,
             '备注': self.driver.find_element_by_xpath('//*[@id="iform3"]/table/tbody/tr[7]/td[2]/span').text
-
         }
         entry_link = self.driver.find_element_by_xpath('//*[@id="entryDetail"]/a')
         entry_link.click()
@@ -109,30 +119,73 @@ class RiskExamAutomaton(object):
         self.driver.switch_to.window(self.driver.window_handles[-1])
         return info
 
-    def fill_form(self, forms: set, info):
-        for key in forms:
-            if key != 'B':
-                checkbox = self.driver.find_element_by_xpath('//*[@id="examModeCodes"]//input[@data_txt="{0}"]'.format(key))
-                checkbox2 = self.driver.find_element_by_xpath('//*[@id="localModeCodes"]/div[10]/nobr/input')
-                if not checkbox.is_selected():
-                    checkbox.click()
-            else:
+    def fill_form(self, forms: dict, info):
+        for key in forms['ExamModeCodes']:
+            v = exampolicy.ExamModeCodes[key]
+            checkbox = self.driver.find_element_by_xpath('//*[@id="examModeCodes"]//input[@value="{0}"]'.format(v))
+            if not checkbox.is_selected():
+                checkbox.click()
+
+        flag_hasalert = False
+        for key in forms.get('ExamMethod', {}):
+            if key == 'B':
                 self.driver.find_element_by_xpath('//*[@id="radioB"]').click()
-                try:
-                    WebDriverWait(self.driver, 10).until(EC.alert_is_present())
-                    self.driver.switch_to.alert.accept()
-                except selenium.common.exceptions.UnexpectedAlertPresentException:
-                    alert = self.driver.switch_to.alert
-                    self.logger.debug("Alert present: {0}".format(alert.text))
-                    alert.accept()
-                except selenium.common.exceptions.TimeoutException:
-                    self.logger.debug("No alert")
+                self.accept_alert()
 
-        self.driver.find_element_by_xpath('//*[@id="randomConta"]').click()
+            elif key == "B1":
+                if not flag_hasalert:
+                    self.driver.find_element_by_xpath('//*[@id="chkTd"]/input[@value="B1"]').click()
+                self.driver.find_element_by_xpath('//*[@id="openR"]').click()
+                self.driver.find_element_by_xpath('//*[@id="openRate"]').send_keys('3')
+            elif key == "B2":
+                if not flag_hasalert:
+                    self.driver.find_element_by_xpath('//*[@id="chkTd"]/input[@value="B2"]').click()
+                self.driver.find_element_by_xpath('//*[@id="openR"]').click()
+                self.driver.find_element_by_xpath('//*[@id="openRate"]').send_keys('10')
+            elif key == "B3":
+                if not flag_hasalert:
+                    self.driver.find_element_by_xpath('//*[@id="chkTd"]/input[@value="B3"]').click()
+                self.driver.find_element_by_xpath('//*[@id="openR"]').click()
+                self.driver.find_element_by_xpath('//*[@id="openRate"]').send_keys('10')
+            else:
+                self.driver.find_element_by_xpath('//*[@id="iform4"]//input[@name="manChk" and @value="{0}"]'.format(key)).click()
+
+        for key in forms['LocalModeCodes']:
+            v = exampolicy.LocalModeCodes[key]
+            if flag_hasalert and v in ("16", "17", "18"):
+                continue
+            checkbox = self.driver.find_element_by_xpath('//*[@id="localModeCodes"]//input[@value="{0}"]'.format(v))
+            if not checkbox.is_selected():
+                checkbox.click()
+
+        # 系统自动判断
+        if flag_hasalert:
+            # 简易查验
+            if self.driver.find_element_by_xpath('//*[@id="chkTd"]/input[@value="B1"]').is_selected():
+                cb = self.driver.find_element_by_xpath('//*[@id="localModeCodes"]//input[@value="16"]')
+                if not cb.is_selected():
+                    cb.click()
+            elif self.driver.find_element_by_xpath('//*[@id="chkTd"]/input[@value="B2"]').is_selected():
+                cb = self.driver.find_element_by_xpath('//*[@id="localModeCodes"]//input[@value="17"]')
+                if not cb.is_selected():
+                    cb.click()
+            elif self.driver.find_element_by_xpath('//*[@id="chkTd"]/input[@value="B3"]').is_selected():
+                cb = self.driver.find_element_by_xpath('//*[@id="localModeCodes"]//input[@value="18"]')
+                if not cb.is_selected():
+                    cb.click()
+
+        extras = forms.get('Extra', {})
+        if 'NoRandomContainer' in extras:
+            cbs = self.driver.find_elements_by_xpath('//*[@id="selectedContainer"]//input[@type="checkbox"]')
+            for cb in cbs:
+                cb.click()
+        else:
+            self.driver.find_element_by_xpath('//*[@id="randomConta"]').click()
+            self.accept_alert()
+
         self.driver.find_element_by_xpath('//*[@id="NoteS"]').send_keys(info['布控要求'])
-        self.driver.find_element_by_xpath('//*[@id="OtherRequire"]').send_keys(forms['备注'])
-
-        pass
+        self.driver.find_elements_by_xpath('//*[@id="SecurityInfo"]').send_keys(info['布控理由'])
+        self.driver.find_element_by_xpath('//*[@id="OtherRequire"]').send_keys(info['备注'])
 
     def run(self):
         self.logger.debug("Opening homepage")
