@@ -75,6 +75,11 @@ class TestGoodsClassifier(unittest.TestCase):
         actual = self.classifier.classify(inputs)
         self.assertEqual('4', actual)
 
+    def test_wastePaper(self):
+        inputs = {'商品编码': ['4707300000'], '标记唛码及备注':'港口区二期，美废NO.8，签约日期：2017年12月26日'}
+        actual = self.classifier.classify(inputs)
+        self.assertEqual('4', actual)
+
 
 class TestIOPortClassifier(unittest.TestCase):
     def setUp(self):

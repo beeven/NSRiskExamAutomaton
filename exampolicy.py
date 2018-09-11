@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import re
+import logging
 from abc import abstractmethod
 
 EXAM_GOODS_CODE_MATCH_LENGTH = 4
@@ -39,9 +40,11 @@ class IOPortClassifier(Classifier):
                 return '2'
             else:
                 return '1'
-        elif inputs['进出口岸'] == '南沙海关保税港区监管点':
+        # elif inputs['进出口岸'] == '南沙海关保税港区监管点':
+        #     return '3'
+        else:
             return '3'
-        return '0'
+
 
 
 class RequirementClassifier(Classifier):
@@ -61,7 +64,7 @@ class GoodsClassifier(Classifier):
 
     def classify(self, inputs: dict):
         goods = frozenset(map(lambda a: a[:EXAM_GOODS_CODE_MATCH_LENGTH], inputs['商品编码']))
-        if not frozenset({'470710', '470720', '470703'}).isdisjoint(
+        if not frozenset({'470710', '470720', '470730'}).isdisjoint(
                     frozenset(map(lambda a: a[:6], inputs['商品编码']))):
             return '4'
         if inputs['标记唛码及备注'].find('危险品') != -1 or \
@@ -112,6 +115,7 @@ class ExamPolicy(object):
     def __init__(self):
         self.classifiers = [IOPortClassifier(), RequirementClassifier(), GoodsClassifier(), CommandClassifier(),
                             GoodsClassifier2()]
+        self.logger = logging.getLogger("ExamPolicy")
 
     def dense_layer(self, conditions, classification):
         if classification.startswith('1111'):
@@ -126,7 +130,7 @@ class ExamPolicy(object):
             ret = {
                 'ExamModeCodes': set(filter(None, map(lambda a: a.strip(), re.split(r"[,，]", conditions['布控要求'])))),
                 'LocalModeCodes': {'常规抽查'},
-                'ExamMethod': {'B'}
+                'ExamMethod': {'B', 'B2'}
             }
             ret['ExamModeCodes'].discard('查验单货是否相符')
 
@@ -134,7 +138,7 @@ class ExamPolicy(object):
             ret = {
                 'ExamModeCodes': set(filter(None, map(lambda a: a.strip(), re.split(r"[,，]", conditions['布控要求'])))),
                 'LocalModeCodes': {'常规抽查'},
-                'ExamMethod': {'B'}
+                'ExamMethod': {'B', 'B2'}
             }
             ret['ExamModeCodes'].discard('查验单货是否相符')
 
@@ -172,17 +176,17 @@ class ExamPolicy(object):
             ret = {
                 'ExamModeCodes': {'核对重量', '是否夹藏', '核对品名'},
                 'LocalModeCodes': {'常规抽查'},
-                'ExamMethod': {'B'}
+                'ExamMethod': {'B', 'B2'}
             }
 
-        elif re.fullmatch('123.1', conditions) is not None:
+        elif re.fullmatch('123.1', classification) is not None:
             ret = {
                 'ExamModeCodes': {'核对重量', '是否夹藏', '核对品名', '检查箱体'},
                 'LocalModeCodes': {'FS6000'},
                 'ExamMethod': {'J'}
             }
 
-        elif re.fullmatch('123.0', conditions) is not None:
+        elif re.fullmatch('123.0', classification) is not None:
             ret = {
                 'ExamModeCodes': {'核对重量', '是否夹藏', '检查箱体'},
                 'LocalModeCodes': {'FS6000'},
@@ -193,7 +197,7 @@ class ExamPolicy(object):
             ret = {
                 'ExamModeCodes': set(filter(None, map(lambda a: a.strip(), re.split(r"[,，]", conditions['布控要求'])))),
                 'LocalModeCodes': {'常规抽查'},
-                'ExamMethod': {'B'}
+                'ExamMethod': {'B', 'B2'}
             }
             ret['ExamModeCodes'].discard('查验单货是否相符')
 
@@ -201,22 +205,22 @@ class ExamPolicy(object):
             ret = {
                 'ExamModeCodes': {'核对重量', '核对品名', '核对规格'},
                 'LocalModeCodes': {'常规抽查'},
-                'ExamMethod': {'B'}
+                'ExamMethod': {'B', 'B2'}
             }
 
         elif classification.startswith('31'):
             ret = {
                 'ExamModeCodes': set(filter(None, map(lambda a: a.strip(), re.split(r"[,，]", conditions['布控要求'])))),
                 'LocalModeCodes': {'常规抽查'},
-                'ExamMethod': {'B'}
+                'ExamMethod': {'B', 'B2'}
             }
             ret['ExamModeCodes'].discard('查验单货是否相符')
 
         elif classification.startswith('32'):
             ret = {
-                'ExamModeCodes': {'核对重量', '核对品名', '核对规格'},
+                'ExamModeCodes': {'核对重量', '核对品名', '是否夹藏'},
                 'LocalModeCodes': {'常规抽查'},
-                'ExamMethod': {'B'}
+                'ExamMethod': {'B', 'B2'}
             }
 
         else:
@@ -230,5 +234,6 @@ class ExamPolicy(object):
 
     def evaluate(self, inputs):
         classification = ''.join([c.classify(inputs) for c in self.classifiers])
+        self.logger.debug("Classified result: {0}".format(classification))
         outputs = self.dense_layer(inputs, classification)
         return outputs

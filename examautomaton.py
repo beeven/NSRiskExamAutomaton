@@ -10,8 +10,8 @@ from selenium.webdriver.support import expected_conditions as EC
 import selenium.common.exceptions
 import selenium.webdriver.chrome.options
 
-import dummyexampolicy
 import exampolicy
+
 
 class RiskExamAutomaton(object):
     """Perform automatic operations on RiskExam website according to predefined policies"""
@@ -30,7 +30,7 @@ class RiskExamAutomaton(object):
         self.policy = exampolicy.ExamPolicy()
 
     def __del__(self):
-        #self.driver.quit()
+        # self.driver.quit()
         pass
 
     def sign_in(self):
@@ -58,29 +58,34 @@ class RiskExamAutomaton(object):
         else:
             return False
 
-    def accept_alert(self):
+    def accept_alert(self, wait_sec=3):
         try:
-            self.logger.debug("Detecting alert.")
-            WebDriverWait(self.driver, 3).until(EC.alert_is_present())
+            # self.logger.debug("Detecting alert.")
+            WebDriverWait(self.driver, wait_sec).until(EC.alert_is_present())
             self.driver.switch_to.alert.accept()
         except selenium.common.exceptions.UnexpectedAlertPresentException:
             alert = self.driver.switch_to.alert
             self.logger.debug("Alert present: {0}".format(alert.text))
             alert.accept()
         except selenium.common.exceptions.TimeoutException:
-            self.logger.debug("No alert is present.")
+            # self.logger.debug("No alert is present.")
+            pass
 
     def apply_exam_policy(self):
         self.logger.debug("Applying exam policies.")
         self.driver.switch_to.window(self.driver.window_handles[-1])
 
-        self.accept_alert()
+        self.accept_alert(8)
 
         WebDriverWait(self.driver, 10).until(EC.invisibility_of_element_located((By.ID, 'IDP_plugin_iform_overlaydiv')))
 
-        #开始细化
-        self.driver.find_element_by_xpath('//*[@id="btnstartCommand"]').click()
-        self.accept_alert()
+        # 开始细化
+        # TODO: The button may be found not attaching to document.
+        btns = self.driver.find_elements_by_xpath('//*[@id="btnstartCommand"]')
+        print(btns)
+        if len(btns) > 0:
+            btns[0].click()
+            self.accept_alert()
 
         info = self.extract_info()
         self.logger.debug(info)
@@ -90,10 +95,14 @@ class RiskExamAutomaton(object):
 
         # 下达查验指令
         self.driver.find_element_by_xpath('//*[@id="btnSubmit"]').click()
+        # TODO: wait for window close
+        # IDP_plugin_iform_overlaydiv
+        # IDP_plugin_iform_loadingdiv
+
 
     def extract_info(self):
         info = {
-            '布控理由':self.driver.find_element_by_xpath('//*[@id="iform3"]/table/tbody/tr[4]/td[2]/span').text,
+            '布控理由': self.driver.find_element_by_xpath('//*[@id="iform3"]/table/tbody/tr[4]/td[2]/span').text,
             '布控要求': self.driver.find_element_by_xpath('//*[@id="iform3"]/table/tbody/tr[5]/td[2]/span').text,
             '备注': self.driver.find_element_by_xpath('//*[@id="iform3"]/table/tbody/tr[7]/td[2]/span').text
         }
@@ -103,11 +112,16 @@ class RiskExamAutomaton(object):
         WebDriverWait(self.driver, 3).until(
             EC.invisibility_of_element_located((By.ID, 'IDP_plugin_iform_overlaydiv')))
 
-        info['报关单号'] = self.driver.find_element_by_xpath('//*[@id="iform"]/tbody/tr[1]/td/table/tbody/tr[1]/td[3]/span').text
-        info['进出口岸'] = self.driver.find_element_by_xpath('//*[@id="iform"]/tbody/tr[2]/td/table/tbody/tr[1]/td[2]/span').text
-        info['运输方式'] = self.driver.find_element_by_xpath('//*[@id="iform"]/tbody/tr[2]/td/table/tbody/tr[2]/td[6]/span').text
-        info['标记唛码及备注'] = self.driver.find_element_by_xpath('//*[@id="iform"]/tbody/tr[2]/td/table/tbody/tr[8]/td[2]/span').text
-        info['集装箱号'] = self.driver.find_element_by_xpath('//*[@id="iform"]/tbody/tr[2]/td/table/tbody/tr[9]/td[2]/span').text
+        info['报关单号'] = self.driver.find_element_by_xpath(
+            '//*[@id="iform"]/tbody/tr[1]/td/table/tbody/tr[1]/td[3]/span').text
+        info['进出口岸'] = self.driver.find_element_by_xpath(
+            '//*[@id="iform"]/tbody/tr[2]/td/table/tbody/tr[1]/td[2]/span').text
+        info['运输方式'] = self.driver.find_element_by_xpath(
+            '//*[@id="iform"]/tbody/tr[2]/td/table/tbody/tr[2]/td[6]/span').text
+        info['标记唛码及备注'] = self.driver.find_element_by_xpath(
+            '//*[@id="iform"]/tbody/tr[2]/td/table/tbody/tr[8]/td[2]/span').text
+        info['集装箱号'] = self.driver.find_element_by_xpath(
+            '//*[@id="iform"]/tbody/tr[2]/td/table/tbody/tr[9]/td[2]/span').text
         info['商品编码'] = []
 
         trs = self.driver.find_elements_by_xpath('//*[@id="iform"]/tbody/tr')
@@ -148,7 +162,8 @@ class RiskExamAutomaton(object):
                 self.driver.find_element_by_xpath('//*[@id="openR"]').click()
                 self.driver.find_element_by_xpath('//*[@id="openRate"]').send_keys('10')
             else:
-                self.driver.find_element_by_xpath('//*[@id="iform4"]//input[@name="manChk" and @value="{0}"]'.format(key)).click()
+                self.driver.find_element_by_xpath(
+                    '//*[@id="iform4"]//input[@name="manChk" and @value="{0}"]'.format(key)).click()
 
         for key in forms['LocalModeCodes']:
             v = exampolicy.LocalModeCodes[key]
@@ -184,7 +199,7 @@ class RiskExamAutomaton(object):
             self.accept_alert()
 
         self.driver.find_element_by_xpath('//*[@id="NoteS"]').send_keys(info['布控要求'])
-        self.driver.find_elements_by_xpath('//*[@id="SecurityInfo"]').send_keys(info['布控理由'])
+        self.driver.find_element_by_xpath('//*[@id="SecurityInfo"]').send_keys(info['布控理由'])
         self.driver.find_element_by_xpath('//*[@id="OtherRequire"]').send_keys(info['备注'])
 
     def run(self):
@@ -199,16 +214,15 @@ class RiskExamAutomaton(object):
             self.save_cookies()
             # self.browser.get(HOME_PAGE)
 
-        if self.is_headless:
-            self.driver.find_element_by_link_text("选择查验").click()
-            self.driver.find_element_by_link_text("选择查验").click()
-        else:
-            WebDriverWait(self.driver, 5).until(EC.presence_of_element_located((By.LINK_TEXT, "选择查验"))).click()
-            WebDriverWait(self.driver, 2).until(EC.presence_of_element_located((By.LINK_TEXT, "查验指令下达"))).click()
+        self.logger.debug("Opening 查验指令下达")
+        WebDriverWait(self.driver, 5).until(EC.presence_of_element_located((By.LINK_TEXT, "选择查验"))).click()
+        WebDriverWait(self.driver, 2).until(EC.presence_of_element_located((By.LINK_TEXT, "查验指令下达"))).click()
 
+        self.logger.debug("Waiting for iframe loading")
         frame = self.driver.find_element_by_id("fcontent")
         self.driver.switch_to.frame(frame)
-        WebDriverWait(self.driver, 3).until(EC.invisibility_of_element_located((By.ID, 'IDP_plugin_listgrid_loadingdiv')))
+        WebDriverWait(self.driver, 10).until(
+            EC.invisibility_of_element_located((By.ID, 'IDP_plugin_listgrid_loadingdiv')))
         tbl = self.driver.find_element_by_id("applyList1")
         lines = len(tbl.find_elements_by_css_selector('tbody tr'))
         self.logger.debug("{0} lines to process.".format(lines))
@@ -217,8 +231,12 @@ class RiskExamAutomaton(object):
             line = tbl.find_element_by_xpath('tbody/tr[{0}]/td[5]'.format(i + 1))
             if line.text != '未下达查验指令':
                 continue
-
+            # if tbl.find_element_by_xpath('tbody/tr[{0}]/td[2]'.format(i + 1)).text[-4:] not in ("0735",):
+            #     continue
             else:
-                tbl.find_element_by_xpath('tbody/tr[{0}]/td[7]/img[1]'.format(i + 1)).click()
+                btn = WebDriverWait(self.driver, 3).until(EC.visibility_of_element_located(
+                    (By.XPATH, '//*[@id="applyList1"]/tbody/tr[{0}]/td[7]/img[@code="edit"]'.format(i + 1))))
+                btn.click()
+                # tbl.find_element_by_xpath('tbody/tr[{0}]/td[7]/img[@code="edit"]'.format(i + 1)).click()
                 self.apply_exam_policy()
                 break

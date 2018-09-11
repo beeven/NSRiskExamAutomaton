@@ -22,6 +22,10 @@ logging.config.dictConfig({
         'RiskExamAutomation': {
             'level': 'DEBUG',
             'handlers': ['console']
+        },
+        'ExamPolicy': {
+            'level': 'DEBUG',
+            'handlers': ['console']
         }
     }
 })
