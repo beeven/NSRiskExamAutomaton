@@ -27,7 +27,8 @@ class RiskExamAutomaton(object):
             options.add_argument("--window-size=1024,768")
             options.add_argument("--disable-gpu")
         self.is_headless = headless
-        self.driver = webdriver.Remote("http://10.3.1.181:9515", desired_capabilities=options.to_capabilities())
+        #self.driver = webdriver.Remote("http://10.3.1.181:9515", desired_capabilities=options.to_capabilities())
+        self.driver = webdriver.Remote("http://10.3.1.181:4444/wd/hub", desired_capabilities=options.to_capabilities())
         self.policy = exampolicy.ExamPolicy()
 
     def __del__(self):
@@ -36,7 +37,7 @@ class RiskExamAutomaton(object):
 
     def sign_in(self):
         """Sign in with username and password"""
-        self.logger.debug("Signing in ...")
+        self.logger.debug("Signing in")
         logon_type_select = self.driver.find_element_by_name("logonType")
         logon_type_select.find_element_by_css_selector("option[value='formsauthentication']").click()
         self.driver.implicitly_wait(1)
@@ -62,7 +63,7 @@ class RiskExamAutomaton(object):
     def accept_alert(self, wait_sec=3):
         try:
             # self.logger.debug("Detecting alert.")
-            WebDriverWait(self.driver, wait_sec).until(EC.alert_is_present())
+            WebDriverWait(self.driver, wait_sec, poll_frequency=1).until(EC.alert_is_present())
             self.driver.switch_to.alert.accept()
         except selenium.common.exceptions.UnexpectedAlertPresentException:
             alert = self.driver.switch_to.alert
@@ -85,7 +86,7 @@ class RiskExamAutomaton(object):
         btns = self.driver.find_elements_by_xpath('//*[@id="btnstartCommand"]')
         if len(btns) > 0:
             btns[0].click()
-            self.accept_alert()
+            self.accept_alert(10)
 
         info = self.extract_info()
         self.logger.debug(info)
@@ -109,11 +110,11 @@ class RiskExamAutomaton(object):
         }
         entry_link = self.driver.find_element_by_xpath('//*[@id="entryDetail"]/a')
         window_handles = self.driver.window_handles
-        self.logger.info("Processing {0}".format(entry_link.text))
+        self.logger.info("Extracting info of {0}".format(entry_link.text))
         entry_link.click()
         WebDriverWait(self.driver, 5).until(EC.new_window_is_opened(window_handles))
         self.driver.switch_to.window(self.driver.window_handles[-1])
-        WebDriverWait(self.driver, 3).until(
+        WebDriverWait(self.driver, 5).until(
             EC.invisibility_of_element_located((By.ID, 'IDP_plugin_iform_overlaydiv')))
 
         info['报关单号'] = self.driver.find_element_by_xpath(
@@ -237,24 +238,24 @@ class RiskExamAutomaton(object):
                 EC.invisibility_of_element_located((By.ID, 'IDP_plugin_listgrid_loadingdiv')))
             tbl = self.driver.find_element_by_id("applyList1")
             lines = len(tbl.find_elements_by_css_selector('tbody tr'))
-            if lines == 0:
-                break
             self.logger.debug("{0} lines to process.".format(lines))
 
             has_processed_one_line = False
             for i in range(lines):
                 line = tbl.find_element_by_xpath('tbody/tr[{0}]/td[5]'.format(i + 1))
+                self.logger.info("Start processing {0}".format(line.text))
                 # if line.text != '未下达查验指令':
                 #     continue
-                if tbl.find_element_by_xpath('tbody/tr[{0}]/td[2]'.format(i + 1)).text[-4:] in ("0401",):
-                    continue
-                else:
-                    btn = WebDriverWait(self.driver, 3).until(EC.visibility_of_element_located(
-                        (By.XPATH, '//*[@id="applyList1"]/tbody/tr[{0}]/td[7]/img[@code="edit"]'.format(i + 1))))
-                    btn.click()
-                    # tbl.find_element_by_xpath('tbody/tr[{0}]/td[7]/img[@code="edit"]'.format(i + 1)).click()
-                    self.apply_exam_policy()
-                    has_processed_one_line = True
-                    break
+                # if tbl.find_element_by_xpath('tbody/tr[{0}]/td[2]'.format(i + 1)).text[-4:] in ("0401",):
+                #     continue
+                # else:
+                btn = WebDriverWait(self.driver, 3).until(EC.visibility_of_element_located(
+                    (By.XPATH, '//*[@id="applyList1"]/tbody/tr[{0}]/td[7]/img[@code="edit"]'.format(i + 1))))
+                btn.click()
+                # tbl.find_element_by_xpath('tbody/tr[{0}]/td[7]/img[@code="edit"]'.format(i + 1)).click()
+                self.apply_exam_policy()
+                has_processed_one_line = True
+                break
             if not has_processed_one_line:
                 break
+        self.logger.debug("No remaining line. Exiting.")

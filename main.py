@@ -23,6 +23,13 @@ logging.config.dictConfig({
             'filename': 'automaton.log',
             'mode': 'a',
             'formatter': 'default'
+        },
+        'errors': {
+            'class': 'logging.FileHandler',
+            'filename': 'automaton-errors.log',
+            'mode': 'a',
+            'level': 'ERROR',
+            'formatter': 'default'
         }
     },
     'loggers': {
