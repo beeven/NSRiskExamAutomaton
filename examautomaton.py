@@ -3,6 +3,7 @@ import logging
 import logging.config
 import logging.handlers
 import os
+import time
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -14,7 +15,7 @@ import exampolicy
 
 
 class RiskExamAutomaton(object):
-    """Perform automatic operations on RiskExam website according to predefined policies"""
+    """Perform automatic operations on Risk Exam website according to predefined policies"""
 
     HOME_PAGE = "http://10.225.4.20/RiskExam/Default.aspx"
 
@@ -30,7 +31,7 @@ class RiskExamAutomaton(object):
         self.policy = exampolicy.ExamPolicy()
 
     def __del__(self):
-        # self.driver.quit()
+        self.driver.quit()
         pass
 
     def sign_in(self):
@@ -65,7 +66,7 @@ class RiskExamAutomaton(object):
             self.driver.switch_to.alert.accept()
         except selenium.common.exceptions.UnexpectedAlertPresentException:
             alert = self.driver.switch_to.alert
-            self.logger.debug("Alert present: {0}".format(alert.text))
+            self.logger.debug("Unexpected alert present: {0}".format(alert.text))
             alert.accept()
         except selenium.common.exceptions.TimeoutException:
             # self.logger.debug("No alert is present.")
@@ -75,14 +76,13 @@ class RiskExamAutomaton(object):
         self.logger.debug("Applying exam policies.")
         self.driver.switch_to.window(self.driver.window_handles[-1])
 
-        self.accept_alert(8)
+        self.accept_alert(15)
 
         WebDriverWait(self.driver, 10).until(EC.invisibility_of_element_located((By.ID, 'IDP_plugin_iform_overlaydiv')))
 
         # 开始细化
         # TODO: The button may be found not attaching to document.
         btns = self.driver.find_elements_by_xpath('//*[@id="btnstartCommand"]')
-        print(btns)
         if len(btns) > 0:
             btns[0].click()
             self.accept_alert()
@@ -98,6 +98,7 @@ class RiskExamAutomaton(object):
         # TODO: wait for window close
         # IDP_plugin_iform_overlaydiv
         # IDP_plugin_iform_loadingdiv
+        WebDriverWait(self.driver, 30).until(EC.number_of_windows_to_be(1))
 
 
     def extract_info(self):
@@ -107,7 +108,10 @@ class RiskExamAutomaton(object):
             '备注': self.driver.find_element_by_xpath('//*[@id="iform3"]/table/tbody/tr[7]/td[2]/span').text
         }
         entry_link = self.driver.find_element_by_xpath('//*[@id="entryDetail"]/a')
+        window_handles = self.driver.window_handles
+        self.logger.info("Processing {0}".format(entry_link.text))
         entry_link.click()
+        WebDriverWait(self.driver, 5).until(EC.new_window_is_opened(window_handles))
         self.driver.switch_to.window(self.driver.window_handles[-1])
         WebDriverWait(self.driver, 3).until(
             EC.invisibility_of_element_located((By.ID, 'IDP_plugin_iform_overlaydiv')))
@@ -160,7 +164,7 @@ class RiskExamAutomaton(object):
                 if not flag_hasalert:
                     self.driver.find_element_by_xpath('//*[@id="chkTd"]/input[@value="B3"]').click()
                 self.driver.find_element_by_xpath('//*[@id="openR"]').click()
-                self.driver.find_element_by_xpath('//*[@id="openRate"]').send_keys('10')
+                self.driver.find_element_by_xpath('//*[@id="openRate"]').send_keys('30')
             else:
                 self.driver.find_element_by_xpath(
                     '//*[@id="iform4"]//input[@name="manChk" and @value="{0}"]'.format(key)).click()
@@ -198,7 +202,7 @@ class RiskExamAutomaton(object):
             self.driver.find_element_by_xpath('//*[@id="randomConta"]').click()
             self.accept_alert()
 
-        self.driver.find_element_by_xpath('//*[@id="NoteS"]').send_keys(info['布控要求'])
+        self.driver.find_element_by_xpath('//*[@id="NoteS"]').send_keys(info['布控要求']+"(自)")
         self.driver.find_element_by_xpath('//*[@id="SecurityInfo"]').send_keys(info['布控理由'])
         self.driver.find_element_by_xpath('//*[@id="OtherRequire"]').send_keys(info['备注'])
 
@@ -214,29 +218,43 @@ class RiskExamAutomaton(object):
             self.save_cookies()
             # self.browser.get(HOME_PAGE)
 
-        self.logger.debug("Opening 查验指令下达")
-        WebDriverWait(self.driver, 5).until(EC.presence_of_element_located((By.LINK_TEXT, "选择查验"))).click()
-        WebDriverWait(self.driver, 2).until(EC.presence_of_element_located((By.LINK_TEXT, "查验指令下达"))).click()
+        menu_opened = False
+        while True:
+            self.driver.switch_to.window(self.driver.window_handles[0])
+            self.logger.debug("Opening 查验指令下达")
+            if not menu_opened:
+                WebDriverWait(self.driver, 5).until(EC.presence_of_element_located((By.LINK_TEXT, "选择查验"))).click()
+                menu_opened = True
 
-        self.logger.debug("Waiting for iframe loading")
-        frame = self.driver.find_element_by_id("fcontent")
-        self.driver.switch_to.frame(frame)
-        WebDriverWait(self.driver, 10).until(
-            EC.invisibility_of_element_located((By.ID, 'IDP_plugin_listgrid_loadingdiv')))
-        tbl = self.driver.find_element_by_id("applyList1")
-        lines = len(tbl.find_elements_by_css_selector('tbody tr'))
-        self.logger.debug("{0} lines to process.".format(lines))
+            WebDriverWait(self.driver, 2).until(EC.presence_of_element_located((By.LINK_TEXT, "查验指令下达"))).click()
 
-        for i in range(lines):
-            line = tbl.find_element_by_xpath('tbody/tr[{0}]/td[5]'.format(i + 1))
-            if line.text != '未下达查验指令':
-                continue
-            # if tbl.find_element_by_xpath('tbody/tr[{0}]/td[2]'.format(i + 1)).text[-4:] not in ("0735",):
-            #     continue
-            else:
-                btn = WebDriverWait(self.driver, 3).until(EC.visibility_of_element_located(
-                    (By.XPATH, '//*[@id="applyList1"]/tbody/tr[{0}]/td[7]/img[@code="edit"]'.format(i + 1))))
-                btn.click()
-                # tbl.find_element_by_xpath('tbody/tr[{0}]/td[7]/img[@code="edit"]'.format(i + 1)).click()
-                self.apply_exam_policy()
+            time.sleep(5)
+
+            self.logger.debug("Waiting for iframe loading")
+            frame = self.driver.find_element_by_id("fcontent")
+            self.driver.switch_to.frame(frame)
+            WebDriverWait(self.driver, 10).until(
+                EC.invisibility_of_element_located((By.ID, 'IDP_plugin_listgrid_loadingdiv')))
+            tbl = self.driver.find_element_by_id("applyList1")
+            lines = len(tbl.find_elements_by_css_selector('tbody tr'))
+            if lines == 0:
+                break
+            self.logger.debug("{0} lines to process.".format(lines))
+
+            has_processed_one_line = False
+            for i in range(lines):
+                line = tbl.find_element_by_xpath('tbody/tr[{0}]/td[5]'.format(i + 1))
+                # if line.text != '未下达查验指令':
+                #     continue
+                if tbl.find_element_by_xpath('tbody/tr[{0}]/td[2]'.format(i + 1)).text[-4:] in ("0401",):
+                    continue
+                else:
+                    btn = WebDriverWait(self.driver, 3).until(EC.visibility_of_element_located(
+                        (By.XPATH, '//*[@id="applyList1"]/tbody/tr[{0}]/td[7]/img[@code="edit"]'.format(i + 1))))
+                    btn.click()
+                    # tbl.find_element_by_xpath('tbody/tr[{0}]/td[7]/img[@code="edit"]'.format(i + 1)).click()
+                    self.apply_exam_policy()
+                    has_processed_one_line = True
+                    break
+            if not has_processed_one_line:
                 break

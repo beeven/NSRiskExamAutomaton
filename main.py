@@ -16,16 +16,23 @@ logging.config.dictConfig({
             'class': 'logging.StreamHandler',
             'level': 'DEBUG',
             'formatter': 'default'
+        },
+        'file': {
+            'class': 'logging.FileHandler',
+            'level': 'DEBUG',
+            'filename': 'automaton.log',
+            'mode': 'a',
+            'formatter': 'default'
         }
     },
     'loggers': {
         'RiskExamAutomation': {
             'level': 'DEBUG',
-            'handlers': ['console']
+            'handlers': ['console', 'file']
         },
         'ExamPolicy': {
             'level': 'DEBUG',
-            'handlers': ['console']
+            'handlers': ['console', 'file']
         }
     }
 })
