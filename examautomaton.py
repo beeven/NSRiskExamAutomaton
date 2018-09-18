@@ -103,10 +103,11 @@ class RiskExamAutomaton(object):
 
 
     def extract_info(self):
+
         info = {
-            '布控理由': self.driver.find_element_by_xpath('//*[@id="iform3"]/table/tbody/tr[4]/td[2]/span').text,
-            '布控要求': self.driver.find_element_by_xpath('//*[@id="iform3"]/table/tbody/tr[5]/td[2]/span').text,
-            '备注': self.driver.find_element_by_xpath('//*[@id="iform3"]/table/tbody/tr[7]/td[2]/span').text
+            '布控理由': "\n".join([elem.text for elem in self.driver.find_elements_by_xpath('//*[@id="iform3"]/table/tbody/tr[4]/td[2]/span')]),
+            '布控要求': "，".join([elem.text for elem in self.driver.find_elements_by_xpath('//*[@id="iform3"]/table/tbody/tr[5]/td[2]/span')]),
+            '备注': "\n".join([elem.text for elem in self.driver.find_elements_by_xpath('//*[@id="iform3"]/table/tbody/tr[7]/td[2]/span')])
         }
         entry_link = self.driver.find_element_by_xpath('//*[@id="entryDetail"]/a')
         window_handles = self.driver.window_handles
@@ -242,7 +243,7 @@ class RiskExamAutomaton(object):
 
             has_processed_one_line = False
             for i in range(lines):
-                line = tbl.find_element_by_xpath('tbody/tr[{0}]/td[5]'.format(i + 1))
+                line = tbl.find_element_by_xpath('tbody/tr[{0}]/td[2]'.format(i + 1))
                 self.logger.info("Start processing {0}".format(line.text))
                 # if line.text != '未下达查验指令':
                 #     continue
