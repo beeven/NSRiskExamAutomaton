@@ -12,6 +12,7 @@ import selenium.common.exceptions
 import selenium.webdriver.chrome.options
 
 import exampolicy
+import sqlite3
 
 
 class RiskExamAutomaton(object):
@@ -20,7 +21,7 @@ class RiskExamAutomaton(object):
     HOME_PAGE = "http://10.225.4.20/RiskExam/Default.aspx"
 
     def __init__(self, headless=False):
-        self.logger = logging.getLogger("RiskExamAutomation")
+        self.logger = logging.getLogger("RiskExamAutomaton")
         options = selenium.webdriver.chrome.options.Options()
         if headless:
             options.add_argument("--headless")
@@ -32,8 +33,10 @@ class RiskExamAutomaton(object):
         self.policy = exampolicy.ExamPolicy()
 
     def __del__(self):
-        self.driver.quit()
-        pass
+        self.logger.debug("disposing")
+        if self.driver is not None:
+            self.driver.quit()
+            self.driver = None
 
     def sign_in(self):
         """Sign in with username and password"""
@@ -101,7 +104,6 @@ class RiskExamAutomaton(object):
         # IDP_plugin_iform_loadingdiv
         WebDriverWait(self.driver, 30).until(EC.number_of_windows_to_be(1))
 
-
     def extract_info(self):
 
         info = {
@@ -140,11 +142,16 @@ class RiskExamAutomaton(object):
         return info
 
     def fill_form(self, forms: dict, info):
+        if 'result' not in info.keys():
+            info['result'] = dict()
+
         for key in forms['ExamModeCodes']:
             v = exampolicy.ExamModeCodes[key]
             checkbox = self.driver.find_element_by_xpath('//*[@id="examModeCodes"]//input[@value="{0}"]'.format(v))
             if not checkbox.is_selected():
                 checkbox.click()
+
+        info['result']['ExamModeCodes'] = forms['ExamModeCodes'].copy()
 
         flag_hasalert = False
         for key in forms.get('ExamMethod', {}):
@@ -199,7 +206,9 @@ class RiskExamAutomaton(object):
         if 'NoRandomContainer' in extras:
             cbs = self.driver.find_elements_by_xpath('//*[@id="selectedContainer"]//input[@type="checkbox"]')
             for cb in cbs:
-                cb.click()
+                if not cb.is_selected():
+                    cb.click()
+
         else:
             self.driver.find_element_by_xpath('//*[@id="randomConta"]').click()
             self.accept_alert()
@@ -207,6 +216,32 @@ class RiskExamAutomaton(object):
         self.driver.find_element_by_xpath('//*[@id="NoteS"]').send_keys(info['布控要求']+"(自)")
         self.driver.find_element_by_xpath('//*[@id="SecurityInfo"]').send_keys(info['布控理由'])
         self.driver.find_element_by_xpath('//*[@id="OtherRequire"]').send_keys(info['备注'])
+
+    def log_to_sqlite(self, info, form):
+        conn = sqlite3.connect('logs.db')
+        conn.execute("""insert into logs (entry_id, reason, req, note, 
+        container_num, exam_req, exam_mode, exam_container_num, exam_time) 
+        values (?, ?, ?, ?, ?, ?, ?, ?, ?)""", (info['报关单号'], info['布控理由'], info['布控要求'], info['备注'],
+                                                len(info['集装箱号'].split(';')), form['ExamModeCodes']))
+        conn.commit()
+        conn.close()
+
+
+    def init_sqlite(self):
+        conn = sqlite3.connect('logs.db')
+        conn.execute("""CREATE TABLE IF NOT EXISTS logs 
+                    (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                     entry_id text,
+                     reason text,
+                     req text
+                     note text
+                     container_num integer,
+                     exam_req text,
+                     exam_mode text,
+                     exam_container_num integer,
+                     exam_time text);""")
+        conn.close()
+
 
     def run(self):
         self.logger.debug("Opening homepage")
@@ -245,8 +280,9 @@ class RiskExamAutomaton(object):
             for i in range(lines):
                 line = tbl.find_element_by_xpath('tbody/tr[{0}]/td[2]'.format(i + 1))
                 self.logger.info("Start processing {0}".format(line.text))
-                # if line.text != '未下达查验指令':
-                #     continue
+                if tbl.find_element_by_xpath('tbody/tr[{0}]/td[5]'.format(i + 1)).text != '未下达查验指令':
+                    self.logger.info("Status is not 未下达查验指令, skipping.")
+                    continue
                 # if tbl.find_element_by_xpath('tbody/tr[{0}]/td[2]'.format(i + 1)).text[-4:] in ("0401",):
                 #     continue
                 # else:

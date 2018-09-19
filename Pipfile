@@ -5,6 +5,8 @@ name = "pypi"
 
 [packages]
 selenium = "*"
+aiohttp = "*"
+aiohttp-sse = "*"
 
 [dev-packages]
 
