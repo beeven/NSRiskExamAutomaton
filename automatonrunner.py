@@ -14,8 +14,9 @@ class AutomatonRunner(object):
         self.logger = logging.getLogger("AutomatonRunner")
         self.pool = ThreadPoolExecutor()
 
-    async def run_forever_in_background(self):
+    async def run_forever_in_background(self, delay=0):
         try:
+            await asyncio.sleep(delay)
             while True:
                 if not self.is_running:
                     fn = functools.partial(self.run)

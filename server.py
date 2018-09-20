@@ -1,36 +1,59 @@
 import datetime
 import logging.config
+import sqlite3
 import asyncio
 from aiohttp import web
 from aiohttp_sse import sse_response
 
-from web.automatonrunner import AutomatonRunner
+from automatonrunner import AutomatonRunner
 
 
 async def get_logs(request: web.BaseRequest):
-    if 'start' in request.query.keys():
-        try:
-            start = datetime.datetime.fromisoformat(request.query.get('start'))
-        except ValueError:
-            start = datetime.datetime.now() - datetime.timedelta(days=1)
+    if 'sort' in request.query.keys():
+        sort = request.query.get('sort').lower()
+        if sort not in ('id', 'entry_id', 'reason', 'req', 'note',
+                        'container_num', 'exam_req', 'exam_method', 'exam_container_num', 'exam_time'):
+            sort = 'exam_time'
     else:
-        start = datetime.datetime.now() - datetime.timedelta(days=1)
+        sort = 'exam_time'
 
-    if 'end' in request.query.keys():
-        try:
-            end = datetime.datetime.fromisoformat(request.query.get('end'))
-        except ValueError:
-            end = datetime.datetime.now()
+    if 'order' in request.query.keys():
+        order = request.query.get('order').lower()
+        if order not in ('asc', 'desc'):
+            order = 'desc'
     else:
-        end = datetime.datetime.now()
+        order = 'desc'
 
-    print('logs start:{0} end:{1}'.format(start, end))
+    if 'page' in request.query.keys():
+        try:
+            page = int(request.query.get('page'))
+        except ValueError:
+            page = 0
+    else:
+        page = 0
 
-    return web.json_response({'data': [
-        {'id': 1, 'entry_id': '516612345677890', 'reason': '布控理由理由理由', 'req': '布控要求要求要求', 'note': '备注备注备注',
-         'containers': 3, 'exam_req': '查验要求', 'exam_mode': '查验方式', 'exam_containers': 2,
-         'exam_time': '2018-09-18T17:53:22Z'}
-    ]})
+    if 'size' in request.query.keys():
+        try:
+            size = int(request.query.get('size'))
+            if not 0 < size <= 30:
+                size = 15
+        except ValueError:
+            size = 15
+    else:
+        size = 15
+
+    cursor = request.app['dbconn'].cursor()
+    cursor.execute("""
+        select id, entry_id, reason, req, note, 
+        container_num, exam_req, exam_method, exam_container_num, exam_time
+        from logs
+        order by {0} {1}
+        limit ? offset ?""".format(sort, order), (size, size * page))
+
+    rows = cursor.fetchall()
+    cursor.close()
+
+    return web.json_response({'data': rows})
 
 
 async def post_start(request):
@@ -85,7 +108,7 @@ async def setup_automaton(app):
     runner = AutomatonRunner(app)
     app['automaton_runner'] = {
         'runner': runner,
-        'task': app.loop.create_task(runner.run_forever_in_background())
+        'task': app.loop.create_task(runner.run_forever_in_background(1800))
     }
 
 
@@ -94,8 +117,24 @@ async def cleanup_automaton(app):
     await app['automaton_runner']['task']
 
 
+async def init_db(app):
+    app['dbconn'] = sqlite3.connect("logs.db")
+
+    def dict_factory(cursor, row):
+        d = {}
+        for idx, col in enumerate(cursor.description):
+            d[col[0]] = row[idx]
+        return d
+
+    app['dbconn'].row_factory = dict_factory
+
+
+async def cleanup_db(app):
+    app['dbconn'].close()
+
+
 def main():
-    app = web.Application()
+    app = web.Application(debug=True)
     app.add_routes([web.get("/api/logs", get_logs),
                     web.get("/api/control/status", get_status),
                     web.post("/api/control/start", post_start),
@@ -104,6 +143,9 @@ def main():
 
     app.on_startup.append(setup_automaton)
     app.on_cleanup.append(cleanup_automaton)
+
+    app.on_startup.append(init_db)
+    app.on_cleanup.append(cleanup_db)
 
     web.run_app(app)
 

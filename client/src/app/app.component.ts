@@ -7,10 +7,13 @@ import { Observable, fromEvent } from 'rxjs';
   templateUrl: './app.component.html',
   styleUrls: ['./app.component.less']
 })
-export class AppComponent implements AfterViewInit {
+export class AppComponent implements AfterViewInit{
+
   
   constructor(private http: HttpClient) { }
+
   title = 'RiskExamAutomaton';
+  displayedColumns = [""]
 
   ngAfterViewInit(): void {
     this.subscribeStatus()

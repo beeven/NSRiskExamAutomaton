@@ -4,6 +4,7 @@ import logging.config
 import logging.handlers
 import os
 import time
+import datetime
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -20,21 +21,26 @@ class RiskExamAutomaton(object):
 
     HOME_PAGE = "http://10.225.4.20/RiskExam/Default.aspx"
 
-    def __init__(self, headless=False):
+    def __init__(self, headless=False, debug=False):
         self.logger = logging.getLogger("RiskExamAutomaton")
         options = selenium.webdriver.chrome.options.Options()
+        self.debug = debug
         if headless:
             options.add_argument("--headless")
             options.add_argument("--window-size=1024,768")
             options.add_argument("--disable-gpu")
         self.is_headless = headless
-        #self.driver = webdriver.Remote("http://10.3.1.181:9515", desired_capabilities=options.to_capabilities())
-        self.driver = webdriver.Remote("http://10.3.1.181:4444/wd/hub", desired_capabilities=options.to_capabilities())
+        if self.debug:
+            self.driver = webdriver.Remote("http://10.3.1.181:9515", desired_capabilities=options.to_capabilities())
+        else:
+            self.driver = webdriver.Remote("http://10.3.1.181:4444/wd/hub", desired_capabilities=options.to_capabilities())
         self.policy = exampolicy.ExamPolicy()
+        self.skip_list = []
+
+        self.init_sqlite()
 
     def __del__(self):
-        self.logger.debug("disposing")
-        if self.driver is not None:
+        if self.driver is not None and not self.debug:
             self.driver.quit()
             self.driver = None
 
@@ -65,16 +71,18 @@ class RiskExamAutomaton(object):
 
     def accept_alert(self, wait_sec=3):
         try:
-            # self.logger.debug("Detecting alert.")
+            self.logger.debug("Detecting alert.")
             WebDriverWait(self.driver, wait_sec, poll_frequency=1).until(EC.alert_is_present())
             self.driver.switch_to.alert.accept()
+            return True
         except selenium.common.exceptions.UnexpectedAlertPresentException:
             alert = self.driver.switch_to.alert
             self.logger.debug("Unexpected alert present: {0}".format(alert.text))
             alert.accept()
+            return True
         except selenium.common.exceptions.TimeoutException:
-            # self.logger.debug("No alert is present.")
-            pass
+            self.logger.debug("No alert is present.")
+            return False
 
     def apply_exam_policy(self):
         self.logger.debug("Applying exam policies.")
@@ -95,21 +103,30 @@ class RiskExamAutomaton(object):
         self.logger.debug(info)
         outputs = self.policy.evaluate(info)
         self.logger.debug(outputs)
-        self.fill_form(outputs, info)
+
+        if not outputs:
+            self.logger.info("{0} 报关单信息不符合条件，无法处理".format(info['报关单号']))
+            self.skip_list.append(info['报关单号'])
+            return
+
+        info = self.fill_form(outputs, info)
 
         # 下达查验指令
-        self.driver.find_element_by_xpath('//*[@id="btnSubmit"]').click()
-        # TODO: wait for window close
-        # IDP_plugin_iform_overlaydiv
-        # IDP_plugin_iform_loadingdiv
-        WebDriverWait(self.driver, 30).until(EC.number_of_windows_to_be(1))
+        if not self.debug:
+            self.driver.find_element_by_xpath('//*[@id="btnSubmit"]').click()
+            WebDriverWait(self.driver, 30).until(EC.number_of_windows_to_be(1))
+        self.log_to_sqlite(info)
 
     def extract_info(self):
+        """获取查验信息和报关单信息"""
 
         info = {
-            '布控理由': "\n".join([elem.text for elem in self.driver.find_elements_by_xpath('//*[@id="iform3"]/table/tbody/tr[4]/td[2]/span')]),
-            '布控要求': "，".join([elem.text for elem in self.driver.find_elements_by_xpath('//*[@id="iform3"]/table/tbody/tr[5]/td[2]/span')]),
-            '备注': "\n".join([elem.text for elem in self.driver.find_elements_by_xpath('//*[@id="iform3"]/table/tbody/tr[7]/td[2]/span')])
+            '布控理由': "\n".join([elem.text for elem in
+                               self.driver.find_elements_by_xpath('//*[@id="iform3"]/table/tbody/tr[4]/td[2]/span')]),
+            '布控要求': "，".join([elem.text for elem in
+                              self.driver.find_elements_by_xpath('//*[@id="iform3"]/table/tbody/tr[5]/td[2]/span')]),
+            '备注': "\n".join([elem.text for elem in
+                             self.driver.find_elements_by_xpath('//*[@id="iform3"]/table/tbody/tr[7]/td[2]/span')])
         }
         entry_link = self.driver.find_element_by_xpath('//*[@id="entryDetail"]/a')
         window_handles = self.driver.window_handles
@@ -142,6 +159,8 @@ class RiskExamAutomaton(object):
         return info
 
     def fill_form(self, forms: dict, info):
+        """填写表单"""
+
         if 'result' not in info.keys():
             info['result'] = dict()
 
@@ -153,54 +172,75 @@ class RiskExamAutomaton(object):
 
         info['result']['ExamModeCodes'] = forms['ExamModeCodes'].copy()
 
-        flag_hasalert = False
-        for key in forms.get('ExamMethod', {}):
-            if key == 'B':
-                self.driver.find_element_by_xpath('//*[@id="radioB"]').click()
-                self.accept_alert()
+        cbx_b1 = self.driver.find_element_by_xpath('//*[@id="chkTd"]/input[@value="B1"]')
+        cbx_b2 = self.driver.find_element_by_xpath('//*[@id="chkTd"]/input[@value="B2"]')
+        cbx_b3 = self.driver.find_element_by_xpath('//*[@id="chkTd"]/input[@value="B3"]')
 
+        if 'B' in forms['ExamMethod']:
+            self.driver.find_element_by_xpath('//*[@id="radioB"]').click()
+
+            # 如果系统自动判断，遵循系统判断规则
+            if self.accept_alert():
+                forms['ExamMethod'].difference_update({'B1', 'B2', 'B3'})
+                if cbx_b1.is_selected():
+                    forms['ExamMethod'].add('B1')
+                elif cbx_b2.is_selected():
+                    forms['ExamMethod'].add('B2')
+                elif cbx_b3.is_selected():
+                    forms['ExamMethod'].add('B3')
+                else:
+                    forms['ExamMethod'].add('B2')
+            else:
+                if forms['ExamMethod'].isdisjoint({'B1', 'B2', 'B3'}):
+                    forms['ExamMethod'].add('B2')
+
+        for key in forms['ExamMethod']:
+            if key == 'B':
+                continue
             elif key == "B1":
-                if not flag_hasalert:
-                    self.driver.find_element_by_xpath('//*[@id="chkTd"]/input[@value="B1"]').click()
+                cbx_b1.click()
                 self.driver.find_element_by_xpath('//*[@id="openR"]').click()
                 self.driver.find_element_by_xpath('//*[@id="openRate"]').send_keys('3')
             elif key == "B2":
-                if not flag_hasalert:
-                    self.driver.find_element_by_xpath('//*[@id="chkTd"]/input[@value="B2"]').click()
+                cbx_b2.click()
                 self.driver.find_element_by_xpath('//*[@id="openR"]').click()
                 self.driver.find_element_by_xpath('//*[@id="openRate"]').send_keys('10')
             elif key == "B3":
-                if not flag_hasalert:
-                    self.driver.find_element_by_xpath('//*[@id="chkTd"]/input[@value="B3"]').click()
+                cbx_b3.click()
                 self.driver.find_element_by_xpath('//*[@id="openR"]').click()
                 self.driver.find_element_by_xpath('//*[@id="openRate"]').send_keys('30')
             else:
                 self.driver.find_element_by_xpath(
                     '//*[@id="iform4"]//input[@name="manChk" and @value="{0}"]'.format(key)).click()
 
+        info['result']['ExamMethod'] = forms['ExamMethod'].copy()
+
         for key in forms['LocalModeCodes']:
             v = exampolicy.LocalModeCodes[key]
-            if flag_hasalert and v in ("16", "17", "18"):
+            if v in ("16", "17", "18"):
                 continue
-            checkbox = self.driver.find_element_by_xpath('//*[@id="localModeCodes"]//input[@value="{0}"]'.format(v))
-            if not checkbox.is_selected():
-                checkbox.click()
+            else:
+                checkbox = self.driver.find_element_by_xpath('//*[@id="localModeCodes"]//input[@value="{0}"]'.format(v))
+                if not checkbox.is_selected():
+                    checkbox.click()
 
-        # 系统自动判断
-        if flag_hasalert:
-            # 简易查验
-            if self.driver.find_element_by_xpath('//*[@id="chkTd"]/input[@value="B1"]').is_selected():
-                cb = self.driver.find_element_by_xpath('//*[@id="localModeCodes"]//input[@value="16"]')
-                if not cb.is_selected():
-                    cb.click()
-            elif self.driver.find_element_by_xpath('//*[@id="chkTd"]/input[@value="B2"]').is_selected():
-                cb = self.driver.find_element_by_xpath('//*[@id="localModeCodes"]//input[@value="17"]')
-                if not cb.is_selected():
-                    cb.click()
-            elif self.driver.find_element_by_xpath('//*[@id="chkTd"]/input[@value="B3"]').is_selected():
-                cb = self.driver.find_element_by_xpath('//*[@id="localModeCodes"]//input[@value="18"]')
-                if not cb.is_selected():
-                    cb.click()
+        # 根据系统确定的查验方式确定本关区查验要求勾选什么
+        if cbx_b1.is_selected():
+            cbv = "16"
+        elif cbx_b2.is_selected():
+            cbv = "17"
+        elif cbx_b3.is_selected():
+            cbv = "18"
+        else:
+            cbv = None
+        if cbv:
+            cb = self.driver.find_element_by_xpath('//*[@id="localModeCodes"]//input[@value="{0}"]'.format(cbv))
+            if not cb.is_selected():
+                cb.click()
+
+        # 从页面上获取系统判断的查验方式
+        cbs = self.driver.find_elements_by_css_selector('#localModeCodes input:checked[type="checkbox"]')
+        info['result']['LocalModeCodes'] = set([cb.find_element_by_xpath('..').text for cb in cbs])
 
         extras = forms.get('Extra', {})
         if 'NoRandomContainer' in extras:
@@ -208,24 +248,29 @@ class RiskExamAutomaton(object):
             for cb in cbs:
                 if not cb.is_selected():
                     cb.click()
-
         else:
             self.driver.find_element_by_xpath('//*[@id="randomConta"]').click()
             self.accept_alert()
 
-        self.driver.find_element_by_xpath('//*[@id="NoteS"]').send_keys(info['布控要求']+"(自)")
+        info['result']['selected_containers_count'] = len(self.driver.find_elements_by_css_selector(
+                                                                '#selectedContainer input:checked[type="checkbox"]'))
+
+        self.driver.find_element_by_xpath('//*[@id="NoteS"]').send_keys(info['布控要求'] + "(自)")
         self.driver.find_element_by_xpath('//*[@id="SecurityInfo"]').send_keys(info['布控理由'])
         self.driver.find_element_by_xpath('//*[@id="OtherRequire"]').send_keys(info['备注'])
+        return info
 
-    def log_to_sqlite(self, info, form):
+    def log_to_sqlite(self, info):
         conn = sqlite3.connect('logs.db')
         conn.execute("""insert into logs (entry_id, reason, req, note, 
-        container_num, exam_req, exam_mode, exam_container_num, exam_time) 
+        container_num, exam_req, exam_method, exam_container_num, exam_time) 
         values (?, ?, ?, ?, ?, ?, ?, ?, ?)""", (info['报关单号'], info['布控理由'], info['布控要求'], info['备注'],
-                                                len(info['集装箱号'].split(';')), form['ExamModeCodes']))
+                                                len(info['集装箱号'].split(';')), ';'.join(info['result']['ExamModeCodes']),
+                                                ';'.join(info['result']['LocalModeCodes']),
+                                                info['result']['selected_containers_count'],
+                                                datetime.datetime.now()))
         conn.commit()
         conn.close()
-
 
     def init_sqlite(self):
         conn = sqlite3.connect('logs.db')
@@ -233,15 +278,14 @@ class RiskExamAutomaton(object):
                     (id INTEGER PRIMARY KEY AUTOINCREMENT,
                      entry_id text,
                      reason text,
-                     req text
-                     note text
+                     req text,
+                     note text,
                      container_num integer,
                      exam_req text,
-                     exam_mode text,
+                     exam_method text,
                      exam_container_num integer,
                      exam_time text);""")
         conn.close()
-
 
     def run(self):
         self.logger.debug("Opening homepage")
@@ -280,11 +324,17 @@ class RiskExamAutomaton(object):
             for i in range(lines):
                 line = tbl.find_element_by_xpath('tbody/tr[{0}]/td[2]'.format(i + 1))
                 self.logger.info("Start processing {0}".format(line.text))
-                if tbl.find_element_by_xpath('tbody/tr[{0}]/td[5]'.format(i + 1)).text != '未下达查验指令':
-                    self.logger.info("Status is not 未下达查验指令, skipping.")
+                status = tbl.find_element_by_xpath('tbody/tr[{0}]/td[5]'.format(i + 1)).text
+                if status != '未下达查验指令' and status != '开始细化查验指令':
+                    self.logger.info("Status is not 未下达查验指令 or 开始细化查验指令, skipping.")
                     continue
-                # if tbl.find_element_by_xpath('tbody/tr[{0}]/td[2]'.format(i + 1)).text[-4:] in ("0401",):
+                entry_id = tbl.find_element_by_xpath('tbody/tr[{0}]/td[2]'.format(i + 1)).text
+                # if entry_id[-4:] in ("1699",):
                 #     continue
+
+                if entry_id in self.skip_list:
+                    continue
+
                 # else:
                 btn = WebDriverWait(self.driver, 3).until(EC.visibility_of_element_located(
                     (By.XPATH, '//*[@id="applyList1"]/tbody/tr[{0}]/td[7]/img[@code="edit"]'.format(i + 1))))
@@ -295,4 +345,59 @@ class RiskExamAutomaton(object):
                 break
             if not has_processed_one_line:
                 break
+            if self.debug:
+                break
         self.logger.debug("No remaining line. Exiting.")
+
+
+
+if __name__ == "__main__":
+    import logging.config
+    logging.config.dictConfig({
+        'version': 1,
+        'formatters': {
+            'default': {
+                'format': '%(asctime)s %(levelname)s %(name)s: %(message)s'
+            }
+        },
+        'handlers': {
+            'console': {
+                'class': 'logging.StreamHandler',
+                'level': 'DEBUG',
+                'formatter': 'default'
+            },
+            'rotate_file': {
+                'level': 'DEBUG',
+                'formatter': 'default',
+                'class': 'logging.handlers.TimedRotatingFileHandler',
+                'filename': 'automaton.log',
+                'encoding': 'utf8',
+                'when': 'D',
+                'interval': 30
+            },
+            'errors': {
+                'level': 'ERROR',
+                'formatter': 'default',
+                'class': 'logging.handlers.RotatingFileHandler',
+                'filename': 'automaton_error.log',
+                'encoding': 'utf8',
+                'maxBytes': 102400000,
+                'backupCount': 30
+            }
+        },
+        'loggers': {
+            'RiskExamAutomaton': {
+                'level': 'DEBUG'
+            },
+            '': {
+                'level': 'INFO',
+                'handlers': ['console', 'rotate_file', 'errors']
+            }
+        }
+    })
+
+    automaton = RiskExamAutomaton(headless=False)
+    try:
+        automaton.run()
+    except Exception as e:
+        logging.error(e, exc_info=True)

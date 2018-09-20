@@ -1,8 +1,8 @@
 import {NgModule} from '@angular/core';
-import {MatButtonModule, MatCheckboxModule, MatTableModule, MatPaginatorModule, MatSortModule} from '@angular/material';
+import {MatButtonModule, MatCheckboxModule, MatTableModule, MatPaginatorModule, MatSortModule, MatProgressSpinnerModule} from '@angular/material';
 
 @NgModule({
-  imports: [MatButtonModule, MatCheckboxModule, MatTableModule, MatPaginatorModule, MatSortModule],
-  exports: [MatButtonModule, MatCheckboxModule, MatTableModule, MatPaginatorModule, MatSortModule],
+  imports: [MatButtonModule, MatCheckboxModule, MatTableModule, MatPaginatorModule, MatSortModule, MatProgressSpinnerModule],
+  exports: [MatButtonModule, MatCheckboxModule, MatTableModule, MatPaginatorModule, MatSortModule, MatProgressSpinnerModule],
 })
 export class MaterialModule { }

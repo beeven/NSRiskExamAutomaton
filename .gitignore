@@ -6,3 +6,4 @@ cookies.txt
 .venv/
 
 automaton*.log
+logs.db

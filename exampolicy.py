@@ -125,6 +125,9 @@ class ExamPolicy(object):
 
     def dense_layer(self, conditions, classification):
         reqs = set(filter(None, map(lambda a: a.strip(), re.split(r"[,，]", conditions['布控要求'])))).difference({'查验单货是否相符'})
+        if not reqs.issubset(ExamModeCodes.keys()):
+            return None
+
 
         if classification.startswith('1111'):
             self.logger.info("判断结果: 5166, 具体布控要求, 商品编码3项或以下，不拼柜，不含3项指令 | 机检")
@@ -139,7 +142,7 @@ class ExamPolicy(object):
             ret = {
                 'ExamModeCodes': reqs,
                 'LocalModeCodes': {'常规抽查'},
-                'ExamMethod': {'B', 'B2'}
+                'ExamMethod': {'B'}
             }
 
         elif classification.startswith('112'):
@@ -147,7 +150,7 @@ class ExamPolicy(object):
             ret = {
                 'ExamModeCodes': reqs,
                 'LocalModeCodes': {'常规抽查'},
-                'ExamMethod': {'B', 'B2'}
+                'ExamMethod': {'B'}
             }
 
         elif classification.startswith('113'):  # 危险品 冻品 水果
@@ -168,7 +171,7 @@ class ExamPolicy(object):
             }
 
         elif re.fullmatch('121.1', classification) is not None:
-            self.logger.info("判断结果: 5166, 无具体指令, 商品编码3项或以下，不拼柜，直放列表内 | 机检，核对品名、核对重量、核对箱体、是否夹藏")
+            self.logger.info("判断结果: 5166, 无具体指令, 商品编码3项或以下，不拼柜，直放列表内 | 机检，核对品名、核对重量、检查箱体、是否夹藏")
             ret = {
                 'ExamModeCodes': {'核对重量', '是否夹藏', '核对品名', '检查箱体'},
                 'LocalModeCodes': {'FS6000'},
@@ -176,7 +179,7 @@ class ExamPolicy(object):
             }
 
         elif re.fullmatch('121.0', classification) is not None:
-            self.logger.info("判断结果: 5166, 无具体指令, 商品编码3项或以下，不拼柜，非直放列表内 | 机检，核对重量、核对箱体、是否夹藏")
+            self.logger.info("判断结果: 5166, 无具体指令, 商品编码3项或以下，不拼柜，非直放列表内 | 机检，核对重量、检查箱体、是否夹藏")
             ret = {
                 'ExamModeCodes': {'核对重量', '是否夹藏', '检查箱体'},
                 'LocalModeCodes': {'FS6000'},
@@ -188,7 +191,7 @@ class ExamPolicy(object):
             ret = {
                 'ExamModeCodes': {'核对重量', '是否夹藏', '核对品名'},
                 'LocalModeCodes': {'常规抽查'},
-                'ExamMethod': {'B', 'B2'}
+                'ExamMethod': {'B'}
             }
 
         elif re.fullmatch('123.1', classification) is not None:  # 属于机检直放目录
@@ -230,7 +233,7 @@ class ExamPolicy(object):
             ret = {
                 'ExamModeCodes': reqs,
                 'LocalModeCodes': {'常规抽查'},
-                'ExamMethod': {'B', 'B2'}
+                'ExamMethod': {'B'}
             }
 
         elif classification.startswith('22'):
@@ -238,7 +241,7 @@ class ExamPolicy(object):
             ret = {
                 'ExamModeCodes': {'核对重量', '核对品名', '核对规格'},
                 'LocalModeCodes': {'常规抽查'},
-                'ExamMethod': {'B', 'B2'}
+                'ExamMethod': {'B'}
             }
 
         elif classification.startswith('31'):
@@ -246,7 +249,7 @@ class ExamPolicy(object):
             ret = {
                 'ExamModeCodes': reqs,
                 'LocalModeCodes': {'常规抽查'},
-                'ExamMethod': {'B', 'B2'}
+                'ExamMethod': {'B'}
             }
 
         elif classification.startswith('32'):
@@ -254,22 +257,18 @@ class ExamPolicy(object):
             ret = {
                 'ExamModeCodes': {'核对重量', '核对品名', '是否夹藏'},
                 'LocalModeCodes': {'常规抽查'},
-                'ExamMethod': {'B', 'B2'}
+                'ExamMethod': {'B'}
             }
 
         else:
             self.logger.info("判断结果: 无法判断")
-            ret = {
-                'ExamModeCodes': set(),
-                'LocalModeCodes': set(),
-                'ExamMethod': set()
-            }
+            return None
 
         if conditions['备注'].find('重量') != -1:
             ret['ExamModeCodes'].add('核对重量')
 
         if conditions['布控理由'].find('不少于三项') != -1:
-            remaining = ['核对箱体', '核对重量', '是否夹藏']
+            remaining = ['检查箱体', '核对重量', '是否夹藏']
             random.shuffle(remaining)
 
             while len(ret['ExamModeCodes']) < 3:
