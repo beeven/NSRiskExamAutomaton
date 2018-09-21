@@ -1,6 +1,7 @@
 import asyncio
 import functools
 import logging
+import queue
 from concurrent.futures import ThreadPoolExecutor
 import examautomaton
 
@@ -13,6 +14,7 @@ class AutomatonRunner(object):
         self.interval = interval
         self.logger = logging.getLogger("AutomatonRunner")
         self.pool = ThreadPoolExecutor()
+        self.logging_queue = queue.Queue(-1)
 
     async def run_forever_in_background(self, delay=0):
         try:
@@ -32,10 +34,11 @@ class AutomatonRunner(object):
 
     def run(self):
         self.is_running = True
-        automaton = examautomaton.RiskExamAutomaton()
+        automaton = examautomaton.RiskExamAutomaton(logging_queue=self.logging_queue)
         try:
             automaton.run()
         except Exception as ex:
             self.logger.warning("Automaton encountered an error: {0}".format(ex))
+
         del automaton
         self.is_running = False

@@ -5,6 +5,9 @@ import logging.handlers
 import os
 import time
 import datetime
+import argparse
+import queue
+import sqlite3
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -13,7 +16,6 @@ import selenium.common.exceptions
 import selenium.webdriver.chrome.options
 
 import exampolicy
-import sqlite3
 
 
 class RiskExamAutomaton(object):
@@ -21,7 +23,7 @@ class RiskExamAutomaton(object):
 
     HOME_PAGE = "http://10.225.4.20/RiskExam/Default.aspx"
 
-    def __init__(self, headless=False, debug=False):
+    def __init__(self, headless=False, debug=False, logging_queue=None):
         self.logger = logging.getLogger("RiskExamAutomaton")
         options = selenium.webdriver.chrome.options.Options()
         self.debug = debug
@@ -38,6 +40,14 @@ class RiskExamAutomaton(object):
         self.skip_list = []
 
         self.init_sqlite()
+
+        if logging_queue:
+            self.logging_queue = logging_queue
+        else:
+            self.logging_queue = queue.Queue(-1)
+        queue_handler = logging.handlers.QueueHandler(self.logging_queue)
+        queue_handler.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
+        self.logger.addHandler(queue_handler)
 
     def __del__(self):
         if self.driver is not None and not self.debug:
@@ -69,11 +79,14 @@ class RiskExamAutomaton(object):
         else:
             return False
 
-    def accept_alert(self, wait_sec=3):
+    def accept_alert(self, wait_sec=3, text=''):
         try:
-            self.logger.debug("Detecting alert.")
+            self.logger.debug("Detecting alert: {0}".format(text))
             WebDriverWait(self.driver, wait_sec, poll_frequency=1).until(EC.alert_is_present())
-            self.driver.switch_to.alert.accept()
+            alert = self.driver.switch_to.alert
+            text = alert.text
+            alert.accept()
+            self.logger.debug("Alert accepted: {0}".format(text))
             return True
         except selenium.common.exceptions.UnexpectedAlertPresentException:
             alert = self.driver.switch_to.alert
@@ -88,7 +101,7 @@ class RiskExamAutomaton(object):
         self.logger.debug("Applying exam policies.")
         self.driver.switch_to.window(self.driver.window_handles[-1])
 
-        self.accept_alert(15)
+        self.accept_alert(15, '查验单货是否项目 开始查验')
 
         WebDriverWait(self.driver, 10).until(EC.invisibility_of_element_located((By.ID, 'IDP_plugin_iform_overlaydiv')))
 
@@ -97,7 +110,7 @@ class RiskExamAutomaton(object):
         btns = self.driver.find_elements_by_xpath('//*[@id="btnstartCommand"]')
         if len(btns) > 0:
             btns[0].click()
-            self.accept_alert(10)
+            self.accept_alert(10, text='开始细化')
 
         info = self.extract_info()
         self.logger.debug(info)
@@ -114,7 +127,18 @@ class RiskExamAutomaton(object):
         # 下达查验指令
         if not self.debug:
             self.driver.find_element_by_xpath('//*[@id="btnSubmit"]').click()
-            WebDriverWait(self.driver, 30).until(EC.number_of_windows_to_be(1))
+            try:
+                if self.accept_alert(text='该票报关单查验未完成'):  # 该票报关单查验未完成，需完成查验后，才能下达查验指令
+                    self.skip_list.append(info['报关单号'])
+                    self.logger.info("{0} cannot submit. Skipping for this run.".format(info['报关单号']))
+                    self.driver.close()
+                    return
+
+                self.logger.debug("Waiting for submitting.")
+                WebDriverWait(self.driver, 60).until(EC.number_of_windows_to_be(1))
+                self.logger.debug("Submitted.")
+            except selenium.common.exceptions.NoSuchWindowException:
+                pass
         self.log_to_sqlite(info)
 
     def extract_info(self):
@@ -180,7 +204,7 @@ class RiskExamAutomaton(object):
             self.driver.find_element_by_xpath('//*[@id="radioB"]').click()
 
             # 如果系统自动判断，且没有强制选定B1 B2 B3，遵循系统判断规则
-            if self.accept_alert() and forms['ExamMethod'].isdisjoint({'B1', 'B2', 'B3'}):
+            if self.accept_alert(text='系统自动判断抽查类型') and forms['ExamMethod'].isdisjoint({'B1', 'B2', 'B3'}):
                 if cbx_b1.is_selected():
                     forms['ExamMethod'].add('B1')
                 elif cbx_b2.is_selected():
@@ -249,7 +273,7 @@ class RiskExamAutomaton(object):
                     cb.click()
         else:
             self.driver.find_element_by_xpath('//*[@id="randomConta"]').click()
-            self.accept_alert()
+            self.accept_alert(text='已经选足够多箱')
 
         info['result']['selected_containers_count'] = len(self.driver.find_elements_by_css_selector(
                                                                 '#selectedContainer input:checked[type="checkbox"]'))
@@ -325,13 +349,14 @@ class RiskExamAutomaton(object):
                 self.logger.info("Start processing {0}".format(line.text))
                 status = tbl.find_element_by_xpath('tbody/tr[{0}]/td[5]'.format(i + 1)).text
                 if status != '未下达查验指令' and status != '开始细化查验指令':
-                    self.logger.info("Status is not 未下达查验指令 or 开始细化查验指令, skipping.")
+                    self.logger.info("Status is not 未下达查验指令 or 开始细化查验指令. Skipping.")
                     continue
                 entry_id = tbl.find_element_by_xpath('tbody/tr[{0}]/td[2]'.format(i + 1)).text
-                # if entry_id[-4:] in ("1699",):
+                # if entry_id[-4:] in ("1333",):
                 #     continue
 
                 if entry_id in self.skip_list:
+                    self.logger.info("EntryId is in skipping list. Skipping.")
                     continue
 
                 # else:
@@ -395,7 +420,13 @@ if __name__ == "__main__":
         }
     })
 
-    automaton = RiskExamAutomaton(headless=False)
+
+    parser = argparse.ArgumentParser(description='Risk Exam Automaton.')
+    parser.add_argument('--debug', action='store_true', default=False)
+    parser.add_argument('--headless', action='store_true', default=False)
+    args = parser.parse_args()
+
+    automaton = RiskExamAutomaton(headless=args.headless, debug=args.debug)
     try:
         automaton.run()
     except Exception as e:
