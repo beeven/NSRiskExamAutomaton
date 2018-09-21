@@ -42,19 +42,32 @@ async def get_logs(request: web.BaseRequest):
     else:
         size = 15
 
+    if 'filter' in request.query.keys():
+        keyword = request.query.get('filter')
+        if not keyword.isdigit():
+            keyword = '%'
+        else:
+            keyword = '%' + keyword + '%'
+    else:
+        keyword = '%'
+
     cursor = request.app['dbconn'].cursor()
-    cursor.execute("""select count(*) 'count' from logs""")
+    cursor.execute("""select count(*) 'count' from logs
+        where entry_id like ?
+        """, (keyword,))
     row = cursor.fetchone()
     row_count = row["count"]
     cursor.execute("""
         select id, entry_id, reason, req, note, 
         container_num, exam_req, exam_method, exam_container_num, exam_time
         from logs
+        where entry_id like ?
         order by {0} {1}
-        limit ? offset ?""".format(sort, order), (size, size * page))
+        limit ? offset ?""".format(sort, order), (keyword, size, size * page))
 
     rows = cursor.fetchall()
     cursor.close()
+
 
     return web.json_response({'data': rows, 'total': row_count})
 
@@ -111,13 +124,14 @@ async def setup_automaton(app):
     runner = AutomatonRunner(app)
     app['automaton_runner'] = {
         'runner': runner,
-        'task': app.loop.create_task(runner.run_forever_in_background(1800))
+        # 'task': app.loop.create_task(runner.run_forever_in_background(1800))
     }
 
 
 async def cleanup_automaton(app):
-    app['automaton_runner']['task'].cancel()
-    await app['automaton_runner']['task']
+    # app['automaton_runner']['task'].cancel()
+    # await app['automaton_runner']['task']
+    pass
 
 
 async def init_db(app):

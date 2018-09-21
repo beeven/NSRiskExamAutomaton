@@ -1,0 +1,6 @@
+<div>
+    <button mat-raised-button class="btn_run" 
+        color="primary" 
+        (click)="runAutomaton()"
+        [disabled]="running">{{running ? '正在运行' : '手动执行'}}</button>
+</div>

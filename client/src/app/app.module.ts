@@ -8,11 +8,14 @@ import { AppRoutingModule } from './app-routing.module';
 import { AppComponent } from './app.component';
 import { LogsService } from './logs/logs.service';
 import { LogsTableComponent } from './logs/logs-table.component';
+import { ConsoleComponent } from './console/console.component';
+import { ConsoleService } from './console/console.service';
 
 @NgModule({
   declarations: [
     AppComponent,
-    LogsTableComponent
+    LogsTableComponent,
+    ConsoleComponent,
   ],
   imports: [
     BrowserModule,
@@ -22,7 +25,8 @@ import { LogsTableComponent } from './logs/logs-table.component';
     MaterialModule
   ],
   providers: [
-    LogsService
+    LogsService,
+    ConsoleService
   ],
   bootstrap: [AppComponent]
 })
