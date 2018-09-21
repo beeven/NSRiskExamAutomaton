@@ -1,3 +1,49 @@
+.logs {
+    margin: 20px;
+    position: relative;
+
+    .spinner-container {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 0;
+        bottom: 0;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+}
+
+
 table {
     width: 100%;
+}
+
+tr.detail-row {
+    height: 0;
+}
+
+tr.log-row:not(.expanded-row):hover {
+    background: #f5f5f5;
+}
+
+tr.log-row:not(.expanded-row):active {
+    background: #efefef;
+}
+
+tr.log-row {
+    cursor: pointer;
+}
+
+.log-row td {
+    border-bottom-width: 0
+}
+
+.log-detail {
+    overflow: hidden;
+    display: flex;
+
+    dt {
+        font-weight: bold;
+    }
 }

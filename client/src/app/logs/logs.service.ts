@@ -5,24 +5,24 @@ import { map } from 'rxjs/operators';
 import { Log } from './log';
 
 
-
+export class LogBatch {
+    logs: Log[];
+    total: number;
+}
 
 @Injectable()
 export class LogsService {
     constructor(private http: HttpClient) { }
 
-    getLogs(page = 0, size = 15, sort='exam_time', order='desc', filter = ''): Observable<Log[]> {
-        return this.http.get("/api/logs", {
+    getLogs(page = 0, size = 15, sort='exam_time', order='desc', filter = ''): Observable<LogBatch> {
+        return this.http.get<LogBatch>("/api/logs", {
             params: new HttpParams()
                 .set('page', page.toString())
                 .set('size', size.toString())
                 .set('sort', sort)
                 .set('order', order)
                 .set('filter', filter)
-        }).pipe(
-            map(res => res["data"])
-        )
+        });
     }
-
 }   
 

@@ -179,9 +179,8 @@ class RiskExamAutomaton(object):
         if 'B' in forms['ExamMethod']:
             self.driver.find_element_by_xpath('//*[@id="radioB"]').click()
 
-            # 如果系统自动判断，遵循系统判断规则
-            if self.accept_alert():
-                forms['ExamMethod'].difference_update({'B1', 'B2', 'B3'})
+            # 如果系统自动判断，且没有强制选定B1 B2 B3，遵循系统判断规则
+            if self.accept_alert() and forms['ExamMethod'].isdisjoint({'B1', 'B2', 'B3'}):
                 if cbx_b1.is_selected():
                     forms['ExamMethod'].add('B1')
                 elif cbx_b2.is_selected():

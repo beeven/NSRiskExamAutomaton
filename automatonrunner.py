@@ -33,6 +33,9 @@ class AutomatonRunner(object):
     def run(self):
         self.is_running = True
         automaton = examautomaton.RiskExamAutomaton()
-        automaton.run()
+        try:
+            automaton.run()
+        except Exception as ex:
+            self.logger.warning("Automaton encountered an error: {0}".format(ex))
         del automaton
         self.is_running = False

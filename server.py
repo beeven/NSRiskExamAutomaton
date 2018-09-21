@@ -43,6 +43,9 @@ async def get_logs(request: web.BaseRequest):
         size = 15
 
     cursor = request.app['dbconn'].cursor()
+    cursor.execute("""select count(*) 'count' from logs""")
+    row = cursor.fetchone()
+    row_count = row["count"]
     cursor.execute("""
         select id, entry_id, reason, req, note, 
         container_num, exam_req, exam_method, exam_container_num, exam_time
@@ -53,7 +56,7 @@ async def get_logs(request: web.BaseRequest):
     rows = cursor.fetchall()
     cursor.close()
 
-    return web.json_response({'data': rows})
+    return web.json_response({'data': rows, 'total': row_count})
 
 
 async def post_start(request):
