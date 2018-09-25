@@ -59,7 +59,7 @@ async def get_logs(request: web.BaseRequest):
     row_count = row["count"]
     cursor.execute("""
         select id, entry_id, reason, req, note, 
-        container_num, exam_req, exam_method, exam_container_num, exam_time
+        container_num, exam_req, exam_method, exam_container_num, strftime('%Y-%m-%dT%H:%M:%S', exam_time) as 'exam_time'
         from logs
         where entry_id like ?
         order by {0} {1}

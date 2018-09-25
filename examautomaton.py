@@ -8,6 +8,7 @@ import datetime
 import argparse
 import queue
 import sqlite3
+import uuid
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -373,7 +374,11 @@ class RiskExamAutomaton(object):
                 break
         self.logger.debug("No remaining line. Exiting.")
 
-
+    def save_screenshot(self):
+        os.makedirs("screenshots")
+        timestr = datetime.datetime.now().strftime("%Y%m%dT%H%M%S")
+        self.driver.save_screenshot("./screenshots/{0}.png".format(timestr))
+        return timestr+".png"
 
 if __name__ == "__main__":
     import logging.config
@@ -430,4 +435,6 @@ if __name__ == "__main__":
     try:
         automaton.run()
     except Exception as e:
+        fname = automaton.save_screenshot()
+        logging.error("Error encountered at {0}. Screenshot saved with name {1}".format(datetime.datetime.now(), fname))
         logging.error(e, exc_info=True)
