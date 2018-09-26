@@ -289,7 +289,7 @@ class RiskExamAutomaton(object):
         conn.execute("""insert into logs (entry_id, reason, req, note, 
         container_num, exam_req, exam_method, exam_container_num, exam_time) 
         values (?, ?, ?, ?, ?, ?, ?, ?, ?)""", (info['报关单号'], info['布控理由'], info['布控要求'], info['备注'],
-                                                len(info['集装箱号'].split(';')), ';'.join(info['result']['ExamModeCodes']),
+                                                len(list(filter(None,info['集装箱号'].split(';')))), ';'.join(info['result']['ExamModeCodes']),
                                                 ';'.join(info['result']['LocalModeCodes']),
                                                 info['result']['selected_containers_count'],
                                                 datetime.datetime.now()))

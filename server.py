@@ -7,6 +7,8 @@ from aiohttp_sse import sse_response
 
 from automatonrunner import AutomatonRunner
 
+async def get_index(request: web.BaseRequest):
+    return web.FileResponse("./client/dist/index.html")
 
 async def get_logs(request: web.BaseRequest):
     if 'sort' in request.query.keys():
@@ -152,11 +154,16 @@ async def cleanup_db(app):
 
 def main():
     app = web.Application(debug=True)
+
     app.add_routes([web.get("/api/logs", get_logs),
                     web.get("/api/control/status", get_status),
                     web.post("/api/control/start", post_start),
                     web.get("/api/control/subscribe", subscribe_status),
-                    web.get("/test", subscribe_status_test)])
+                    web.get("/test", subscribe_status_test),
+                    web.get("/", get_index),
+                    web.static("/", "./client/dist")])
+
+    app.router.add_static("/", "./static")
 
     app.on_startup.append(setup_automaton)
     app.on_cleanup.append(cleanup_automaton)
