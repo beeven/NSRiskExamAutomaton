@@ -26,9 +26,7 @@ async def __aiter__(self):
         def __init__(self):
             self.notifications = []
             self.future = future_ctor()
-            pool_scheduler = ThreadPoolScheduler()
-
-            source.materialize().subscribe_on(pool_scheduler).subscribe(self.on_next)
+            source.materialize().subscribe(self.on_next)
 
         def feeder(self):
             if not self.notifications or self.future.done():
@@ -69,7 +67,8 @@ class AutomatonRunner(object):
 
         self.logger.addHandler(QueueHandler(self.logging_queue))
 
-        self.log_source = ReplaySubject(buffer_size=buffer_size)
+        pool_scheduler = AsyncIOScheduler()
+        self.log_source = ReplaySubject(buffer_size=buffer_size, scheduler=pool_scheduler)
         logging_handler = LoggingRxHandler(self.log_source)
         logging_handler.setFormatter(logging.Formatter('\033[34m%(asctime)s \033[91m%(name)s\033[0m %(message)s'))
         self.logging_queue_listener = QueueListener(self.logging_queue, logging_handler)

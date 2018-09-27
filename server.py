@@ -94,7 +94,8 @@ async def get_status(request):
 async def subscribe_status(request):
     async with sse_response(request) as resp:
         async for line in request.app['automaton_runner']['runner'].log_source:
-            await resp.send(json.dumps({'message': line, 'running': request.app['automaton_runner']['runner'].is_running}))
+            await resp.send(json.dumps({'message': line,
+                                        'running': request.app['automaton_runner']['runner'].is_running}))
 
 
 async def subscribe_status_test(request):

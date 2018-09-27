@@ -26,15 +26,8 @@ export class TerminalComponent implements OnInit, OnDestroy {
     private consoleSubscription: Subscription;
 
     constructor(private elem: ElementRef,
-        private consoleService: ConsoleService) {
+        private consoleService: ConsoleService) { }
 
-        }
-
-
-    public Fit() {
-        fit(this.term);
-    }
-    
 
     ngOnInit(): void {
         this.term.open(this.elem.nativeElement);

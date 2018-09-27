@@ -1,7 +1,7 @@
-import { Component, OnInit, ViewChild, AfterViewInit } from '@angular/core';
+import { Component, OnInit } from '@angular/core';
 import { ConsoleService } from './console.service';
 import { trigger, state, style, transition, animate } from '@angular/animations';
-import { TerminalComponent } from './terminal.component';
+
 
 
 @Component({
@@ -26,17 +26,11 @@ export class ConsoleComponent implements OnInit {
 
     terminalState = 'collapsed';
 
-    @ViewChild('terminal') terminal: TerminalComponent;
-
     ngOnInit(): void {
         this.consoleService.subscribeStatus();
         this.consoleService.running$.subscribe(
             running => this.running=running
         )
-    }
-
-    Fit() {
-        this.terminal.Fit();
     }
 
     runAutomaton() {
