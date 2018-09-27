@@ -1,6 +1,7 @@
 import datetime
 import logging.config
 import sqlite3
+import os
 import asyncio
 from aiohttp import web
 from aiohttp_sse import sse_response
@@ -153,8 +154,10 @@ async def cleanup_db(app):
 
 
 def main():
+
     app = web.Application(debug=True)
 
+    os.makedirs('./client/dist', exist_ok=True)
     app.add_routes([web.get("/api/logs", get_logs),
                     web.get("/api/control/status", get_status),
                     web.post("/api/control/start", post_start),
@@ -163,7 +166,6 @@ def main():
                     web.get("/", get_index),
                     web.static("/", "./client/dist")])
 
-    app.router.add_static("/", "./static")
 
     app.on_startup.append(setup_automaton)
     app.on_cleanup.append(cleanup_automaton)

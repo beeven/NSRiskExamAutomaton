@@ -10,12 +10,14 @@ import { LogsService } from './logs/logs.service';
 import { LogsTableComponent } from './logs/logs-table.component';
 import { ConsoleComponent } from './console/console.component';
 import { ConsoleService } from './console/console.service';
+import { TerminalComponent }  from './console/terminal.component';
 
 @NgModule({
   declarations: [
     AppComponent,
     LogsTableComponent,
     ConsoleComponent,
+    TerminalComponent,
   ],
   imports: [
     BrowserModule,

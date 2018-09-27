@@ -1,6 +1,14 @@
 <div>
-    <button mat-raised-button class="btn_run" 
-        color="primary" 
-        (click)="runAutomaton()"
-        [disabled]="running">{{running ? '正在运行' : '手动执行'}}</button>
+    <button mat-raised-button class="btn_run" color="primary" (click)="runAutomaton()" [disabled]="running">{{running ? '正在运行' : '马上执行'}}</button>
+    
+    <button mat-button class="btn_log" aria-label="show logs" (click)="shouldShowLogs = !shouldShowLogs">
+        <span>运行日志</span>
+        <i class="material-icons md-dark">dvr</i>
+    </button>
+
+        
+        <div @logExpand class="terminal" *ngIf="shouldShowLogs">
+            <app-terminal></app-terminal>
+        </div>
+
 </div>
