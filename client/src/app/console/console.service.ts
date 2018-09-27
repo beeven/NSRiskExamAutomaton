@@ -42,8 +42,9 @@ export class ConsoleService {
         let statusSrc = fromEvent(source, 'message');
         statusSrc.subscribe(
             (ev: MessageEvent) => {
-                console.log(ev.data);
-                this.consoleSubject.next(ev.data);
+                let data = JSON.parse(ev.data)
+                this.consoleSubject.next(data.message);
+                this.runningSubject.next(data.running);
             }
         );
     }

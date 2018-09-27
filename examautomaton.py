@@ -8,7 +8,6 @@ import datetime
 import argparse
 import queue
 import sqlite3
-import uuid
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -46,11 +45,12 @@ class RiskExamAutomaton(object):
             self.logging_queue = logging_queue
         else:
             self.logging_queue = queue.Queue(-1)
-        queue_handler = logging.handlers.QueueHandler(self.logging_queue)
-        queue_handler.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
-        self.logger.addHandler(queue_handler)
+        self.queue_handler = logging.handlers.QueueHandler(self.logging_queue)
+        self.logger.addHandler(self.queue_handler)
 
     def __del__(self):
+        self.queue_handler.close()
+        self.logger.removeHandler(self.queue_handler)
         if self.driver is not None and not self.debug:
             self.driver.quit()
             self.driver = None

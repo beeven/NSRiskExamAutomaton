@@ -2,16 +2,18 @@ import datetime
 import logging.config
 import sqlite3
 import os
+import json
 import asyncio
 from aiohttp import web
 from aiohttp_sse import sse_response
 
 from automatonrunner import AutomatonRunner
 
-async def get_index(request: web.BaseRequest):
+async def get_index(request):
     return web.FileResponse("./client/dist/index.html")
 
-async def get_logs(request: web.BaseRequest):
+
+async def get_logs(request):
     if 'sort' in request.query.keys():
         sort = request.query.get('sort').lower()
         if sort not in ('id', 'entry_id', 'reason', 'req', 'note',
@@ -71,7 +73,6 @@ async def get_logs(request: web.BaseRequest):
     rows = cursor.fetchall()
     cursor.close()
 
-
     return web.json_response({'data': rows, 'total': row_count})
 
 
@@ -91,14 +92,9 @@ async def get_status(request):
 
 
 async def subscribe_status(request):
-    loop = request.app.loop
     async with sse_response(request) as resp:
-        while True:
-            if request.app['automaton_runner']['runner'].is_running:
-                await resp.send('running')
-            else:
-                await resp.send('stopped')
-            await asyncio.sleep(10, loop=loop)
+        async for line in request.app['automaton_runner']['runner'].log_source:
+            await resp.send(json.dumps({'message': line, 'running': request.app['automaton_runner']['runner'].is_running}))
 
 
 async def subscribe_status_test(request):
@@ -165,7 +161,6 @@ def main():
                     web.get("/test", subscribe_status_test),
                     web.get("/", get_index),
                     web.static("/", "./client/dist")])
-
 
     app.on_startup.append(setup_automaton)
     app.on_cleanup.append(cleanup_automaton)
